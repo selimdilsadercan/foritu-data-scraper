@@ -1,0 +1,56 @@
+name: Refresh Course Plans
+
+on:
+  schedule:
+    # At 00:00 on Tuesday.
+    - cron: "0 0 * * 2"
+
+  workflow_dispatch:
+
+jobs:
+  refresh_course_plans:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Clones the repo
+      - name: Checkout Repo Content
+        uses: actions/checkout@v4
+
+      # Clones the data repo
+      - name: Clone Data Repo
+        uses: actions/checkout@v4
+        with:
+          repository: itu-helper/data
+          token: ${{ secrets.API_TOKEN_GITHUB }}
+          path: ./data/
+
+      # Go Back to the main repo
+      - name: Back to Main Repo
+        run: |
+          cd ..
+
+      # Sets up python
+      - name: Python Setup
+        uses: actions/setup-python@v2.3.1
+        with:
+          python-version: 3.11
+
+      # Install the python requirements via pip
+      - name: Install Python Requirements
+        run: pip install -r requirements.txt
+
+      # Run the python script
+      - name: Python Run
+        run: |
+          python src/run.py -scrap_target course_plan
+
+      # Commits the changes back to the data repo
+      - name: Push course_plans.txt to itu-helper/data
+        uses: dmnemec/copy_file_to_another_repo_action@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.API_TOKEN_GITHUB }}
+        with:
+          source_file: './data/course_plans.txt'
+          destination_repo: 'itu-helper/data'
+          user_email: 'data-updater@itu-helper.com'
+          user_name: 'ITU Helper'
