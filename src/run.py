@@ -63,6 +63,28 @@ def save_course_rows(rows):
         f.writelines(lines)
 
 
+def save_final_exams(exam_data):
+    """Save final exam data to PSV file"""
+    Logger.log_info("Saving Final Exam Data...")
+    
+    # Create header
+    header = "CRN|Course Code|Course Number|Course Name|Academician|Exam Type|Exam Location|Day|Time|Date|Branch Code\n"
+    
+    # Create data lines
+    lines = [header]
+    for exam in exam_data:
+        line = f"{exam['crn']}|{exam['course_code']}|{exam['course_number']}|{exam['course_name']}|{exam['academician']}|{exam['exam_type']}|{exam['exam_location']}|{exam['day']}|{exam['time']}|{exam['date']}|{exam['branch_code']}\n"
+        lines.append(line)
+    
+    # Sort lines (skip header)
+    lines[1:] = sorted(lines[1:])
+    
+    with open(FINAL_EXAMS_FILE_PATH, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+    
+    Logger.log_info(f"Saved {len(exam_data)} final exam records to {FINAL_EXAMS_FILE_PATH}")
+
+
 def save_course_plans(faculty_course_plans):
     # faculty_course_plans dictionary is structure example:
 
@@ -177,7 +199,7 @@ def save_misc_data(data):
 
 parser = argparse.ArgumentParser(description="Scraps data from ITU's website.")
 parser.add_argument('-scrap_target', type=str,
-                    help="options: [lesson, course, course_plan, misc]")
+                    help="options: [lesson, course, course_plan, misc, final_exam]")
 
 if __name__ == "__main__":
     args = parser.parse_args()
@@ -200,6 +222,9 @@ if __name__ == "__main__":
     elif args.scrap_target == "lesson":
         lesson_rows = LessonScraper(driver).scrap_tables()
         save_lesson_rows(lesson_rows)
+    elif args.scrap_target == "final_exam":
+        final_exam_data = FinalExamScraper(driver).scrape_final_exams()
+        save_final_exams(final_exam_data)
 
     DriverManager.kill_driver(driver)
 

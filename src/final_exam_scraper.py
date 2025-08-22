@@ -1,5 +1,5 @@
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import Select
+from selenium.webdriver.support.ui import Select, WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 from bs4 import BeautifulSoup
@@ -65,9 +65,19 @@ class FinalExamScraper(Scraper):
                 Logger.log_warning(f"No exam data found for branch code: {branch_code_info['text']}")
                 return []
             
-            # Find the table
-            table = table_container.find_element(By.TAG_NAME, "table")
-            rows = table.find_elements(By.TAG_NAME, "tr")
+            # Check if there's a "no data" message instead of a table
+            container_html = table_container.get_attribute("innerHTML")
+            if "yayınlanmamıştır" in container_html or "not published" in container_html:
+                Logger.log_warning(f"No exam data published for branch code: {branch_code_info['text']}")
+                return []
+            
+            # Try to find the table
+            try:
+                table = table_container.find_element(By.TAG_NAME, "table")
+                rows = table.find_elements(By.TAG_NAME, "tr")
+            except NoSuchElementException:
+                Logger.log_warning(f"No table found for branch code: {branch_code_info['text']}")
+                return []
             
             exam_data = []
             
@@ -75,6 +85,27 @@ class FinalExamScraper(Scraper):
             for row in rows[1:]:
                 cells = row.find_elements(By.TAG_NAME, "td")
                 if len(cells) >= 10:  # Ensure we have all expected columns
+                    # Handle multiple exam locations properly
+                    exam_location_cell = cells[6]
+                    exam_location_html = exam_location_cell.get_attribute("innerHTML")
+                    
+                    # Split by <br> tags and clean up each location
+                    locations = []
+                    if "<br>" in exam_location_html:
+                        # Split by <br> tags and clean each location
+                        location_parts = exam_location_html.split("<br>")
+                        for part in location_parts:
+                            # Clean HTML tags and whitespace
+                            clean_location = re.sub(r'<[^>]+>', '', part).strip()
+                            if clean_location:
+                                locations.append(clean_location)
+                    else:
+                        # Single location
+                        locations = [exam_location_cell.text.strip()]
+                    
+                    # Join multiple locations with commas
+                    exam_location = ", ".join(locations)
+                    
                     exam_row = {
                         'crn': cells[0].text.strip(),
                         'course_code': cells[1].text.strip(),
@@ -82,7 +113,7 @@ class FinalExamScraper(Scraper):
                         'course_name': cells[3].text.strip(),
                         'academician': cells[4].text.strip(),
                         'exam_type': cells[5].text.strip(),
-                        'exam_location': cells[6].text.strip(),
+                        'exam_location': exam_location,
                         'day': cells[7].text.strip(),
                         'time': cells[8].text.strip(),
                         'date': cells[9].text.strip(),
@@ -91,6 +122,89 @@ class FinalExamScraper(Scraper):
                     exam_data.append(exam_row)
             
             Logger.log_info(f"Scraped {len(exam_data)} exams for branch code: {branch_code_info['text']}")
+            return exam_data
+            
+        except (TimeoutException, NoSuchElementException) as e:
+            Logger.log_error(f"Error scraping exams for branch code {branch_code_info['text']}: {str(e)}")
+            return []
+
+    def scrape_exam_table_with_driver(self, driver, branch_code_info):
+        """Scrape the exam table for a specific branch code using a specific driver"""
+        try:
+            # Select the branch code from dropdown
+            dropdown = driver.find_element(By.ID, "DersBransKoduId")
+            select = Select(dropdown)
+            select.select_by_value(branch_code_info['value'])
+            
+            # Click the submit button
+            submit_button = driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+            submit_button.click()
+            
+            # Wait for the table to load
+            sleep(2)
+            
+            # Check if table container is visible
+            table_container = driver.find_element(By.ID, "finalTakvimiTableContainer")
+            if table_container.get_attribute("style") and "display: none" in table_container.get_attribute("style"):
+                Logger.log_warning(f"No exam data found for branch code: {branch_code_info['text']}")
+                return []
+            
+            # Check if there's a "no data" message instead of a table
+            container_html = table_container.get_attribute("innerHTML")
+            if "yayınlanmamıştır" in container_html or "not published" in container_html:
+                Logger.log_warning(f"No exam data published for branch code: {branch_code_info['text']}")
+                return []
+            
+            # Try to find the table
+            try:
+                table = table_container.find_element(By.TAG_NAME, "table")
+                rows = table.find_elements(By.TAG_NAME, "tr")
+            except NoSuchElementException:
+                Logger.log_warning(f"No table found for branch code: {branch_code_info['text']}")
+                return []
+            
+            exam_data = []
+            
+            # Skip header row
+            for row in rows[1:]:
+                cells = row.find_elements(By.TAG_NAME, "td")
+                if len(cells) >= 10:  # Ensure we have all expected columns
+                    # Handle multiple exam locations properly
+                    exam_location_cell = cells[6]
+                    exam_location_html = exam_location_cell.get_attribute("innerHTML")
+                    
+                    # Split by <br> tags and clean up each location
+                    locations = []
+                    if "<br>" in exam_location_html:
+                        # Split by <br> tags and clean each location
+                        location_parts = exam_location_html.split("<br>")
+                        for part in location_parts:
+                            # Clean HTML tags and whitespace
+                            clean_location = re.sub(r'<[^>]+>', '', part).strip()
+                            if clean_location:
+                                locations.append(clean_location)
+                    else:
+                        # Single location
+                        locations = [exam_location_cell.text.strip()]
+                    
+                    # Join multiple locations with commas
+                    exam_location = ", ".join(locations)
+                    
+                    exam_row = {
+                        'crn': cells[0].text.strip(),
+                        'course_code': cells[1].text.strip(),
+                        'course_number': cells[2].text.strip(),
+                        'course_name': cells[3].text.strip(),
+                        'academician': cells[4].text.strip(),
+                        'exam_type': cells[5].text.strip(),
+                        'exam_location': exam_location,
+                        'day': cells[7].text.strip(),
+                        'time': cells[8].text.strip(),
+                        'date': cells[9].text.strip(),
+                        'branch_code': branch_code_info['text']
+                    }
+                    exam_data.append(exam_row)
+            
             return exam_data
             
         except (TimeoutException, NoSuchElementException) as e:
@@ -110,9 +224,8 @@ class FinalExamScraper(Scraper):
         
         for i, branch_code in enumerate(branch_codes):
             try:
-                # Create a new scraper instance for this thread
-                thread_scraper = FinalExamScraper(driver)
-                exams = thread_scraper.scrape_exam_table(branch_code)
+                # Use the same scraper methods but with the thread's driver
+                exams = self.scrape_exam_table_with_driver(driver, branch_code)
                 thread_exams.extend(exams)
                 
                 if (i + 1) % log_interval_modulo == 0:
